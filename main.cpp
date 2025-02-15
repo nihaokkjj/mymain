@@ -1,159 +1,677 @@
-#include <GL/glut.h>
+#include <GL/glew.h> 
+#include <GL/glut.h>  
+#include <GLFW/glfw3.h>  
+#include<iostream>
+#include<SOIL.h>
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+#include<math.h>
 #include"init.h"
 #include"drawsun.h"
 #include"creat_planet.h"
 #include"drawcycle.h"
-#include"milk_way.h"//ĞÇºÓ
-#include"creat_nebula.h"//ĞÇÔÆ
+#include"milk_way.h"//æ˜Ÿæ²³
+#include"creat_nebula.h"//æ˜Ÿäº‘
 
-#define WIDTH 800
-#define HEIGHT 800
+#define WIDTH 1000
+#define HEIGHT 1000
+#define M_PI 3.141592
 
-static GLfloat angle1 = 0.0f; // µØÇò¹«×ª½Ç¶È
-static GLfloat angle2 = 0.0f; // »ğĞÇ¹«×ª½Ç¶È
-static GLfloat angle3 = 0.0f; // ÔÂÇòÈÆµØÇò¹«×ª½Ç¶È
+unsigned int texture;
+const int sun_texture_count = 5;
+unsigned int sunTextures[sun_texture_count];
+int currentSunTextureIndex = 0;
+int nextSunTextureIndex = 1;
+
+// å®šä¹‰å¤©ä½“ç»“æ„ä½“
+struct CelestialBody {
+    float radius;  // å¤©ä½“åŠå¾„
+    float orbitRadius;  // è½¨é“åŠå¾„
+    float orbitCenterX; // è½¨é“ä¸­å¿ƒ X åæ ‡
+    float orbitCenterY; // è½¨é“ä¸­å¿ƒ Y åæ ‡
+    float orbitCenterZ; // è½¨é“ä¸­å¿ƒ Z åæ ‡
+    bool isSelected;    // æ˜¯å¦è¢«é€‰ä¸­
+};
+
+// å°„çº¿ç»“æ„ä½“
+struct Ray {
+    float originX, originY, originZ;
+    float directionX, directionY, directionZ;
+};
+
+// åˆå§‹åŒ–å¤©ä½“
+CelestialBody earth = { 0.32f, 5.4f, 0.0f, 0.0f, 0.0f, false };
+CelestialBody moon = { 0.06f, 0.55f, 0.0f, 0.0f, 0.0f, false };
+CelestialBody mercury = { 0.15f, 2.8f, 0.0f, 0.0f, 0.0f, false };
+CelestialBody venus = { 0.19f, 4.0f, 0.0f, 0.0f, 0.0f, false };
+CelestialBody Saturn = { 0.47f, 9.5f, 0.0f, 0.0f, 0.0f, false };
+CelestialBody mars = { 0.3f, 6.6f, 0.0f, 0.0f, 0.0f, false };
+CelestialBody Jupiter = { 0.5f, 7.9f, 0.0f, 0.0f, 0.0f, false };
+CelestialBody Neptune = { 0.3f, 11.9f, 0.0f, 0.0f, 0.0f, false };
+CelestialBody Uranus = { 0.35f, 10.9f, 0.0f, 0.0f, 0.0f, false };
+
+// å…¨å±€å˜é‡
+const int STAR_COUNT = 100;  // æ˜Ÿæ˜Ÿçš„æ•°é‡
+float starX[STAR_COUNT];     // æ˜Ÿæ˜Ÿçš„ x åæ ‡
+float starY[STAR_COUNT];     // æ˜Ÿæ˜Ÿçš„ y åæ ‡
+float starZ[STAR_COUNT];     // æ˜Ÿæ˜Ÿçš„ z åæ ‡
+float mouseX = 0.0f;         // é¼ æ ‡çš„ x åæ ‡
+float mouseY = 0.0f;
+float blendFactor = 0.0f;  // æ··åˆå› å­ï¼ŒèŒƒå›´ä» 0 åˆ° 1
+const float blendStep = 0.99f;  // æ¯æ¬¡å¸§æ›´æ–°æ—¶æ··åˆå› å­çš„å¢é‡
+
+static GLfloat angle1 = 0.0f, angle4, angle5, angle6, angle7, angle8; // åœ°çƒå…¬è½¬è§’åº¦
+static GLfloat angle2 = 0.0f; // ç«æ˜Ÿå…¬è½¬è§’åº¦
+static GLfloat angle3 = 0.0f; // æœˆçƒç»•åœ°çƒå…¬è½¬è§’åº¦
+
+// ç›¸æœºè§†è§’å‚æ•°
+float cameraX = 0.0f;
+float cameraY = 12.0f;
+float cameraZ = -20.0f;
+float centerX = 0.0f;
+float centerY = 0.0f;
+float centerZ = 0.0f;
+float upX = 0.0f;
+float upY = 10.5f;
+float upZ = 0.0f;
+
+// é¼ æ ‡ä¸Šä¸€ä½ç½®
+int lastMouseX = 0;
+int lastMouseY = 0;
+
+// é¼ æ ‡çµæ•åº¦
+const float mouseSensitivity = 0.003f;
+
+// å°è¡Œæ˜Ÿå¸¦
+const int ASTEROID_COUNT = 200;
+float asteroidX[ASTEROID_COUNT];
+float asteroidY[ASTEROID_COUNT];
+float asteroidZ[ASTEROID_COUNT];
+float asteroidSize[ASTEROID_COUNT];
+float asteroidAngle[ASTEROID_COUNT];
 
 Planet creat_planet;
 Cycle cycle;
 MilkWay milkyWay;
 Nebula nebula;
+
+// è®¡ç®—å°„çº¿
+Ray calculateRay(int mouseX, int mouseY, int windowWidth, int windowHeight) {
+
+    GLint viewport[4];
+    GLdouble modelview[16];
+    GLdouble projection[16];
+    GLdouble nearPoint[3], farPoint[3];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    glGetDoublev(GL_MODELVIEW_MATRIX, modelview);
+    glGetDoublev(GL_PROJECTION_MATRIX, projection);
+
+    // è®¡ç®—è¿‘å¹³é¢ä¸Šçš„ç‚¹
+    gluUnProject(mouseX, viewport[3] - mouseY, 0.0, modelview, projection, viewport, &nearPoint[0], &nearPoint[1], &nearPoint[2]);
+    
+    // è®¡ç®—è¿œå¹³é¢ä¸Šçš„ç‚¹
+    gluUnProject(mouseX, viewport[3] - mouseY, 1.0, modelview, projection, viewport, &farPoint[0], &farPoint[1], &farPoint[2]);
+    Ray ray;
+    ray.originX = nearPoint[0];
+    ray.originY = nearPoint[1];
+    ray.originZ = nearPoint[2];
+    ray.directionX = farPoint[0] - nearPoint[0];
+    ray.directionY = farPoint[1] - nearPoint[1];
+    ray.directionZ = farPoint[2] - nearPoint[2];
+    return ray;
+}
+
+// å°„çº¿ä¸è½¨é“ç›¸äº¤æ£€æµ‹
+bool rayIntersectsOrbit(const Ray& ray, const CelestialBody& body) {
+    
+    float a = ray.directionX * ray.directionX + ray.directionZ * ray.directionZ;
+    float b = 2 * (ray.directionX * (ray.originX - body.orbitCenterX) + ray.directionZ * (ray.originZ - body.orbitCenterZ));
+    float c = (ray.originX - body.orbitCenterX) * (ray.originX - body.orbitCenterX) + (ray.originZ - body.orbitCenterZ) * (ray.originZ - body.orbitCenterZ) - body.orbitRadius * body.orbitRadius;
+
+    float discriminant = b * b - 4 * a * c;
+    return discriminant >= 0;
+}
+
+void mouse(int button, int state, int x, int y) {
+    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
+        Ray ray = calculateRay(x, y, WIDTH, HEIGHT);
+
+        // æ£€æµ‹åœ°çƒè½¨é“
+        earth.isSelected = rayIntersectsOrbit(ray, earth);
+
+        // æ£€æµ‹æœˆçƒè½¨é“
+        // å…ˆç§»åŠ¨åˆ°åœ°çƒä½ç½®
+        float earthX = earth.orbitRadius * cos(angle3 * M_PI / 180.0f);
+        float earthZ = earth.orbitRadius * sin(angle3 * M_PI / 180.0f);
+        moon.orbitCenterX = earthX;
+        moon.orbitCenterZ = earthZ;
+        moon.isSelected = rayIntersectsOrbit(ray, moon);
+
+        mercury.isSelected = rayIntersectsOrbit(ray, mercury);
+        venus.isSelected = rayIntersectsOrbit(ray, venus);
+        Saturn.isSelected = rayIntersectsOrbit(ray, Saturn);
+        mars.isSelected = rayIntersectsOrbit(ray, mars);
+        Jupiter.isSelected = rayIntersectsOrbit(ray, Jupiter);
+        Neptune.isSelected = rayIntersectsOrbit(ray, Neptune);
+        Uranus.isSelected = rayIntersectsOrbit(ray, Uranus);
+        
+        glutPostRedisplay();
+    }
+}
+
+void drawBlendedSun(float x, float y, float width, float height) {
+    glEnable(GL_TEXTURE_2D);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // ç»˜åˆ¶å½“å‰çº¹ç†
+    glBindTexture(GL_TEXTURE_2D, sunTextures[currentSunTextureIndex]);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f - blendFactor);
+    glBegin(GL_QUADS);
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex2f(x, y);
+    glTexCoord2f(1.0f, 0.0f);
+    glVertex2f(x + width, y);
+    glTexCoord2f(1.0f, 1.0f);
+    glVertex2f(x + width, y + height);
+    glTexCoord2f(0.0f, 1.0f);
+    glVertex2f(x, y + height);
+    glEnd();
+    // ç»˜åˆ¶ä¸‹ä¸€çº¹ç†
+    glBindTexture(GL_TEXTURE_2D, sunTextures[nextSunTextureIndex]);
+    glColor4f(1.0f, 1.0f, 1.0f, blendFactor);
+    glBegin(GL_QUADS);
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex2f(x, y);
+    glTexCoord2f(1.0f, 0.0f);
+    glVertex2f(x + width, y);
+    glTexCoord2f(1.0f, 1.0f);
+    glVertex2f(x + width, y + height);
+    glTexCoord2f(0.0f, 1.0f);
+    glVertex2f(x, y + height);
+    glEnd();
+    glDisable(GL_BLEND);
+    glDisable(GL_TEXTURE_2D);
+}
+
+void initTextures() {
+    glGenTextures(sun_texture_count, sunTextures);
+
+    const char* filenames[sun_texture_count] = { "4.jpg",  "5.jpg", "6.png","7.jpg" ,"3.jpg" };
+
+    for (int i = 0; i < sun_texture_count; ++i) {
+        glBindTexture(GL_TEXTURE_2D, sunTextures[i]);
+        // ä¸ºå½“å‰ç»‘å®šçš„çº¹ç†å¯¹è±¡è®¾ç½®ç¯ç»•ã€è¿‡æ»¤æ–¹å¼
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        // åŠ è½½å¹¶ç”Ÿæˆçº¹ç†
+        int sun_width, sun_height, nrChannels;
+        // stbi_set_flip_vertically_on_load(true); // ç¿»è½¬çº¹ç†çš„Yè½´
+        unsigned char* data = stbi_load(filenames[i], &sun_width, &sun_height, &nrChannels, 0);
+        if (data) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, sun_width, sun_height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+            glGenerateMipmap(GL_TEXTURE_2D);
+        }
+        else {
+            // std::cout << "Failed to load texture" << std::endl;
+            std::cout << "Failed to load texture: " << filenames[i] << std::endl;
+
+            exit(1); // é€€å‡ºç¨‹åº
+        }
+        stbi_image_free(data);
+    }
+}
+
+// è´´å›¾ä½ç½®
+void drawTexturedSquare(float x, float y, float width, float height, unsigned int texId) {
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, texId);
+
+    glBegin(GL_QUADS);
+    // å·¦ä¸‹è§’
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex2f(x, y);
+    // å³ä¸‹è§’
+    glTexCoord2f(1.0f, 0.0f);
+    glVertex2f(x + width, y);
+    // å³ä¸Šè§’
+    glTexCoord2f(1.0f, 1.0f);
+    glVertex2f(x + width, y + height);
+    // å·¦ä¸Šè§’
+    glTexCoord2f(0.0f, 1.0f);
+    glVertex2f(x, y + height);
+    glEnd();
+
+    glDisable(GL_TEXTURE_2D);
+}
+
+void mouseMotion(int x, int y) {
+    // æ›´æ–°é¼ æ ‡ä¸Šä¸€ä½ç½®
+    lastMouseX = x;
+    lastMouseY = y;
+
+    float aspect = (float)WIDTH / (float)HEIGHT;
+    mouseX = (2.0f * x / WIDTH - 1.0f) * aspect;
+    mouseY = 1.0f - 2.0f * y / HEIGHT;
+}
+
+//è§†è§’å˜åŠ¨
+void keyboard(unsigned char key, int x, int y) {
+    const float moveSpeed = 0.1f;
+    switch (key) {
+    case 'w':
+        cameraZ += moveSpeed;
+        break;
+    case 's':
+        cameraZ -= moveSpeed;
+        break;
+    case 'a':
+        cameraX -= moveSpeed;
+        break;
+    case 'd':
+        cameraX += moveSpeed;
+        break;
+    case 'q':
+        cameraY += moveSpeed;
+        break;
+    case 'e':
+        cameraY -= moveSpeed;
+        break;
+    }
+    glutPostRedisplay();
+}
+
+////
+//void mouse(int button, int state, int x, int y) {
+//    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
+//        // è¿™é‡Œå¯ä»¥æ·»åŠ ç‚¹å‡»æ£€æµ‹é€»è¾‘ï¼Œåˆ¤æ–­ç‚¹å‡»çš„æ˜¯å“ªä¸ªå¤©ä½“
+//        std::cout << "Mouse clicked at (" << x << ", " << y << ")" << std::endl;
+//    }
+//}
+
+//æ˜¾ç¤ºè¡Œæ˜Ÿè½¨é“
+void drawOrbit(float radius, int segments) {
+    glBegin(GL_LINE_LOOP);
+    for (int i = 0; i < segments; ++i) {
+        float angle = 2.0f * M_PI * (float)i / (float)segments;
+        float x = radius * std::cos(angle);
+        float z = radius * std::sin(angle);
+        glVertex3f(x, 0.0f, z);
+    }
+    glEnd();
+}
 void myDisplay(void)
 {
+
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // ´´½¨Í¸ÊÓĞ§¹ûÊÓÍ¼
+    // åˆ›å»ºé€è§†æ•ˆæœè§†å›¾
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluPerspective(100.0f, 1.0f, 1.0f, 20.0f); // ½«ËùÓĞÊı¾İÊıÒÔ 1e6
-    // 1¿ÉÊÓ½Ç´óĞ¡;    2¶¨ÒåÎïÌåÏÔÊ¾ÔÚ»­°åÉÏµÄxºÍy·½ÏòÉÏµÄ±ÈÀı ,ÉèÎª1£¬»á°´Êµ¼Ê·´Ó¦³¤¿í±È
-    //3Õâ¸öÖµÔ½´ó£¬±íÊ¾¹Û²âµã¾àÀëÎïÌå¾àÀëÔ½Ô¶
-    //4¶¨Òå¿É¹Û²âµ½µÄÎïÌåµÄ×îÔ¶´¦½ØÃæÏà¾àÏà»úµÄ¾àÀë
+    gluPerspective(120.0f, 1.0f, 1.0f, 20.0f); // å°†æ‰€æœ‰æ•°æ®æ•°ä»¥ 1e6
+    // 1å¯è§†è§’å¤§å°;    2å®šä¹‰ç‰©ä½“æ˜¾ç¤ºåœ¨ç”»æ¿ä¸Šçš„xå’Œyæ–¹å‘ä¸Šçš„æ¯”ä¾‹ ,è®¾ä¸º1ï¼Œä¼šæŒ‰å®é™…ååº”é•¿å®½æ¯”
+    //3è¿™ä¸ªå€¼è¶Šå¤§ï¼Œè¡¨ç¤ºè§‚æµ‹ç‚¹è·ç¦»ç‰©ä½“è·ç¦»è¶Šè¿œ
+    //4å®šä¹‰å¯è§‚æµ‹åˆ°çš„ç‰©ä½“çš„æœ€è¿œå¤„æˆªé¢ç›¸è·ç›¸æœºçš„è·ç¦»
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
-    gluLookAt(0.0, 5.0, -12.0, 0.0, 0.0, 0.0, 0.0, 10.5, 0.0);//Ç°Èı¸ö ±íÊ¾Ïà»úÔÚÊÀ½ç×ø±êÏµÖĞµÄÎ»ÖÃ
-    //ÖĞ¼äÈı¸ö¶¨ÒåÏà»úÕı¶Ô×ÅµÄÊÀ½ç×ø±êÏµÖĞµÄµãµÄÎ»ÖÃ×ø±ê£¬³ÉÏñºóÕâÒ»µã»áÎ»ÓÚ»­°åµÄÖĞĞÄÎ»ÖÃ
-    //×îºóÈı¸öÊı¶¨ÒåÏà»ú±¾ÉíµÄ³¯Ïò¡£ÕâÈı¸ö×ø±êÊÇÔÚÊÀ½ç×ø±êÏµÖĞµÄ×ø±êµã£¬¿ÉÒÔÀí½âÎªÈËÕ¾Á¢ÔÚÏà»ú´¦Í·µÄ³¯Ïò¡£ÕâÈı¸ö×ø±êÊÇÊÀ½ç×ø±êÏµÖĞµÄ×ø±êµã£¬²»ÊÇÏà»ú×ø±êÏµµÄ£¬Ö»ÊÇÓÃÀ´¶¨Òå·½Ïò£¬
-    
-    // »æÖÆÌ«Ñô
+    gluLookAt(cameraX, cameraY, cameraZ, centerX, centerY, centerZ, upX, upY, upZ);//å‰ä¸‰ä¸ª è¡¨ç¤ºç›¸æœºåœ¨ä¸–ç•Œåæ ‡ç³»ä¸­çš„ä½ç½®
+    //ä¸­é—´ä¸‰ä¸ªå®šä¹‰ç›¸æœºæ­£å¯¹ç€çš„ä¸–ç•Œåæ ‡ç³»ä¸­çš„ç‚¹çš„ä½ç½®åæ ‡ï¼Œæˆåƒåè¿™ä¸€ç‚¹ä¼šä½äºç”»æ¿çš„ä¸­å¿ƒä½ç½®
+    //æœ€åä¸‰ä¸ªæ•°å®šä¹‰ç›¸æœº
+    // æœ¬èº«çš„æœå‘ã€‚è¿™ä¸‰ä¸ªåæ ‡æ˜¯åœ¨ä¸–ç•Œåæ ‡ç³»ä¸­çš„åæ ‡ç‚¹ï¼Œå¯ä»¥ç†è§£ä¸ºäººç«™ç«‹åœ¨ç›¸æœºå¤„å¤´çš„æœå‘ã€‚è¿™ä¸‰ä¸ªåæ ‡æ˜¯ä¸–ç•Œåæ ‡ç³»ä¸­çš„åæ ‡ç‚¹ï¼Œä¸æ˜¯ç›¸æœºåæ ‡ç³»çš„ï¼Œåªæ˜¯ç”¨æ¥å®šä¹‰æ–¹å‘ï¼Œ
+
+    //ç»˜åˆ¶å¤ªé˜³
     drawsun();
-    //creat_planet.setupLights();
-    // ¶¨ÒåµØÇòµÄ²ÄÖÊ²¢»æÖÆµØÇò
+
+    // ç»˜åˆ¶å¤ªé˜³å…‰çº¿
+    drawSunRays();
+
+    //å…‰æ™•
+    drawSunHalo();
+    // ç»˜åˆ¶å¤ªé˜³(è´´å›¾æ–¹å¼)
+    //glPushMatrix();
+    //glEnable(GL_TEXTURE_2D);
+    //glBindTexture(GL_TEXTURE_2D, sunTextures[currentSunTextureIndex]);
+    //float x = -1.15f;
+    //float y = -1.15f;
+    //float squareWidth = 2.38f;
+    //float squareHeight = 2.38f;
+
+    //drawBlendedSun(x, y, squareWidth, squareHeight);
+    ////drawTexturedSquare(x, y, squareWidth, squareHeight, sunTextures[currentSunTextureIndex]);
+    ////drawsun();
+
+    //glDisable(GL_TEXTURE_2D);
+    //glPopMatrix();
+
+    // å®šä¹‰åœ°çƒçš„æè´¨å¹¶ç»˜åˆ¶åœ°çƒ
     GLfloat earth_mat_ambient[] = { 0.0f, 0.0f, 0.0f, 1.0f };
     GLfloat earth_mat_diffuse[] = { 0.0f, 0.0f, 0.5f, 1.0f };
     GLfloat earth_mat_specular[] = { 0.0f, 0.0f, 1.0f, 1.0f };
     GLfloat earth_mat_emission[] = { 0.0f, 0.0f, 1.0f, 1.0f };
     GLfloat earth_mat_shininess = 30.0f;
 
- 
-    glPushMatrix(); // ¿ªÊ¼±£´æµØÇòµÄ±ä»»×´Ì¬
+    glPushMatrix(); // å¼€å§‹ä¿å­˜åœ°çƒçš„å˜æ¢çŠ¶æ€
     {
-        creat_planet.drawPlanet(0.5, 8.0, angle1, earth_mat_ambient, earth_mat_diffuse, earth_mat_specular, earth_mat_emission, earth_mat_shininess);
+        creat_planet.drawPlanet(0.32f, 5.4f, angle3, earth_mat_ambient, earth_mat_diffuse, earth_mat_specular, earth_mat_emission, earth_mat_shininess);
 
-        // ¶¨ÒåÔÂÇòµÄ²ÄÖÊ²¢»æÖÆÔÂÇò
+        // ç»˜åˆ¶åœ°çƒè½¨é“
+        glPushMatrix();
+        if (earth.isSelected) {
+            glColor3f(0.0f, 0.1f, 0.9f);
+        }
+        else {
+            glColor3f(0.0f, 0.0f, 1.0f); // æœªé€‰ä¸­æ—¶è½¨é“é¢œè‰²ä¸ºè“è‰²
+        }
+        drawOrbit(earth.orbitRadius, 100);
+        glPopMatrix();
+
+        // å®šä¹‰æœˆçƒçš„æè´¨å¹¶ç»˜åˆ¶æœˆçƒ
         GLfloat moon_mat_ambient[] = { 0.0f, 0.0f, 0.0f, 1.0f };
         GLfloat moon_mat_diffuse[] = { 0.72f, 0.73f, 0.47f, 1.0f };
         GLfloat moon_mat_specular[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-        GLfloat moon_mat_emission[] = { 0.72f, 0.73f, 0.47f, 1.0f };//µ÷ÑÕÉ«
+        GLfloat moon_mat_emission[] = { 0.72f, 0.73f, 0.47f, 1.0f };
         GLfloat moon_mat_shininess = 10.0f;
 
-        // µØÇò×Ô×ªµÄÍ¬Ê±£¬ÈÃÔÂÇòÈÆµØÇò¹«×ª
-        glPushMatrix(); // ±£´æµ±Ç°±ä»»¾ØÕó£¬¼´µØÇòµÄ±ä»»¾ØÕó
+        // åœ°çƒè‡ªè½¬çš„åŒæ—¶ï¼Œè®©æœˆçƒç»•åœ°çƒå…¬è½¬
+        glPushMatrix(); // ä¿å­˜å½“å‰å˜æ¢çŸ©é˜µï¼Œå³åœ°çƒçš„å˜æ¢çŸ©é˜µ
         {
-            glRotatef(angle1, 0.0f, 1.0f, 0.0f);// ÈÆYÖáÕıÏòĞı×ª, ¸úµØÇòÒ»¸öÊı¾İ
-            glTranslatef(8.0f, 0.0f, 0.0f);//ÏÈÈÃÔÂÇòÈÆ×ÅÌ«Ñô¸úµØÇòÒ»Æğ¹«×ª
-            glRotatef(angle3, 0.0f, 1.0f, 0.0f); // ¹«×ªÖ®ºóÈÆµØÇòĞı×ª
-            glTranslatef(1.2f, 0.0f, 0.0f); // ÔÚµØÇòĞı×ªµÄ°ë¾¶
+            glRotatef(angle3, 0.0f, 1.0f, 0.0f);
+            glTranslatef(5.4f, 0.0f, 0.0f);
+            glRotatef(angle2, 0.0f, 1.0f, 0.0f);
+            glTranslatef(0.55f, 0.0f, 0.0f);
             glMaterialfv(GL_FRONT, GL_AMBIENT, moon_mat_ambient);
             glMaterialfv(GL_FRONT, GL_DIFFUSE, moon_mat_diffuse);
             glMaterialfv(GL_FRONT, GL_SPECULAR, moon_mat_specular);
             glMaterialfv(GL_FRONT, GL_EMISSION, moon_mat_emission);
             glMaterialf(GL_FRONT, GL_SHININESS, moon_mat_shininess);
-
-            glutSolidSphere(0.06, 40, 32);
+            glutSolidSphere(0.06f, 40, 32);
         }
-        glPopMatrix(); // »Ö¸´µØÇòµÄ±ä»»¾ØÕó
+        glPopMatrix(); // æ¢å¤åœ°çƒçš„å˜æ¢çŸ©é˜µ
+
+        // å®šä¹‰ç«æ˜Ÿçš„æè´¨å¹¶ç»˜åˆ¶ç«æ˜Ÿ
+        GLfloat mars_mat_ambient[] = { 0.3f, 0.1f, 0.0f, 1.0f };
+        GLfloat mars_mat_diffuse[] = { 0.8f, 0.4f, 0.2f, 1.0f };
+        GLfloat mars_mat_specular[] = { 0.3f, 0.1f, 0.05f, 1.0f };
+        GLfloat mars_mat_emission[] = { 0.05f, 0.02f, 0.01f, 1.0f };
+        GLfloat mars_mat_shininess = 15.0f;
+
+        creat_planet.drawPlanet(0.3f, 6.6f, angle4, mars_mat_ambient, mars_mat_diffuse, mars_mat_specular, mars_mat_emission, mars_mat_shininess);
+
+        // ç»˜åˆ¶ç«æ˜Ÿè½¨é“
+        glPushMatrix();
+        if (mars.isSelected) {
+            glColor3f(0.3f, 0.1f, 0.0f);
+        }
+        else {
+            glColor3f(0.0f, 0.0f, 1.0f); // æœªé€‰ä¸­æ—¶è½¨é“é¢œè‰²ä¸ºè“è‰²
+        }
+        drawOrbit(mars.orbitRadius, 100);
+        glPopMatrix();
+
+        //ç»˜åˆ¶æ°´æ˜Ÿ
+        GLfloat mercury_mat_ambient[] = { 0.25f, 0.25f, 0.25f, 1.0f };//æ²¡æœ‰å…‰ç…§çš„æ—¶å€™: æµ…ç°è‰²
+        GLfloat mercury_mat_diffuse[] = { 0.4f, 0.4f, 0.35f, 1.0f };//æ¼«åå°„: æµ…ç°è‰²
+        GLfloat mercury_mat_specular[] = { 0.0f, 0.1f, 0.1f, 1.0f };//é•œé¢åè‰²è¾ƒå¼±
+        GLfloat mercury_mat_emission[] = { 0.2f, 0.2f, 0.2f, 0.1f };//æœ¬èº«ä¸å‘å…‰
+        GLfloat mercury_mat_shininess = 5.0f;//å…‰æ³½åº¦ä½
+
+        creat_planet.drawPlanet(0.15f, 2.8f, angle1, mercury_mat_ambient, mercury_mat_diffuse, mercury_mat_specular, mercury_mat_emission, mercury_mat_shininess);
+
+        // ç»˜åˆ¶æ°´æ˜Ÿè½¨é“
+        glPushMatrix();
+        if (mercury.isSelected) {
+            glColor3f(0.25f, 0.25f, 0.25f);
+        }
+        else {
+            glColor3f(0.0f, 0.0f, 1.0f); // æœªé€‰ä¸­æ—¶è½¨é“é¢œè‰²ä¸ºè“è‰²
+        }
+        drawOrbit(mercury.orbitRadius, 100);
+        glPopMatrix();
+
+        //ç»˜åˆ¶é‡‘æ˜Ÿ
+        GLfloat venus_mat_ambient[] = { 0.8f, 0.7f, 0.4f, 1.0f };//æŸ”å’Œé»„è‰²
+        GLfloat venus_mat_diffuse[] = { 0.8f, 0.65f, 0.4f, 1.0f };//åå°„æˆä¸ºäº®é»„è‰²
+        GLfloat venus_mat_specular[] = { 0.3f, 0.2f, 0.1f, 1.0f };
+        GLfloat venus_mat_emission[] = { 0.2f, 0.16f, 0.1f, 1.0f };
+        GLfloat venus_mat_shininess = 10.0f;
+
+        creat_planet.drawPlanet(0.19f, 4.0f, angle2, venus_mat_ambient, venus_mat_diffuse, venus_mat_specular, venus_mat_emission, venus_mat_shininess);
+
+        // ç»˜åˆ¶é‡‘æ˜Ÿè½¨é“
+        glPushMatrix();
+        if (venus.isSelected) {
+            glColor3f( 0.8f, 0.7f, 0.4f);
+        }
+        else {
+            glColor3f(0.0f, 0.0f, 1.0f); // æœªé€‰ä¸­æ—¶è½¨é“é¢œè‰²ä¸ºè“è‰²
+        }
+        drawOrbit(venus.orbitRadius, 100);
+        glPopMatrix();
+
+        // ç»˜åˆ¶åœŸæ˜Ÿ
+        GLfloat Saturn_mat_ambient[] = { 0.5f, 0.5f, 0.0f, 1.0f };
+        GLfloat Saturn_mat_diffuse[] = { 0.8f, 0.81f, 0.27f, 1.0f };
+        GLfloat Saturn_mat_specular[] = { 0.2f, 0.15f, 0.1f, 1.0f };
+        GLfloat Saturn_mat_emission[] = { 0.1f, 0.1f, 0.0f, 1.0f };
+        GLfloat Saturn_mat_shininess = 5.0f;
+
+        creat_planet.drawPlanet(0.47f, 9.5f, angle6, Saturn_mat_ambient, Saturn_mat_diffuse, Saturn_mat_specular, Saturn_mat_emission, Saturn_mat_shininess);
+
+        // ç»˜åˆ¶åœŸæ˜Ÿè½¨é“
+        glPushMatrix();
+        if (Saturn.isSelected) {
+            glColor3f(0.5f, 0.5f, 0.0f);
+        }
+        else {
+            glColor3f(0.0f, 0.0f, 1.0f); // æœªé€‰ä¸­æ—¶è½¨é“é¢œè‰²ä¸ºè“è‰²
+        }
+        drawOrbit(Saturn.orbitRadius, 100);
+        glPopMatrix();
+
+        // åœŸæ˜Ÿçš„ç¯
+        glPushMatrix();
+        glRotatef(angle6, 0.0f, 1.0f, 0.0f);
+        glTranslatef(9.5f, 0.0f, 0.0f);
+        cycle.draw_cycle(0.6f, 0.9f, 100);//åœˆå†…, åœˆå¤–
+        glPopMatrix();
+
+        // ç»˜åˆ¶æœ¨æ˜Ÿ
+        GLfloat Jupiter_mat_ambient[] = { 0.6f, 0.6f, 0.0f, 1.0f };
+        GLfloat Jupiter_mat_diffuse[] = { 0.82f, 0.87f, 0.27f, 1.0f };
+        GLfloat Jupiter_mat_specular[] = { 0.2f, 0.15f, 0.1f, 1.0f };
+        GLfloat Jupiter_mat_emission[] = { 0.1f, 0.1f, 0.0f, 1.0f };
+        GLfloat Jupiter_mat_shininess = 5.0f;
+
+        creat_planet.drawPlanet(0.5f, 7.9f, angle5, Jupiter_mat_ambient, Jupiter_mat_diffuse, Jupiter_mat_specular, Jupiter_mat_emission, Jupiter_mat_shininess);
+
+        // ç»˜åˆ¶æœ¨æ˜Ÿè½¨é“
+        if (Jupiter.isSelected) {
+            glColor3f(0.6f, 0.6f, 0.0f);
+        }
+        else {
+            glColor3f(0.0f, 0.0f, 1.0f); // æœªé€‰ä¸­æ—¶è½¨é“é¢œè‰²ä¸ºè“è‰²
+        }
+        drawOrbit(Jupiter.orbitRadius, 100);
+
+        // ç»˜åˆ¶å¤©ç‹æ˜Ÿ
+        GLfloat Uranus_mat_ambient[] = { 0.488f, 0.95f, 0.786f, 1.0f };
+        GLfloat Uranus_mat_diffuse[] = { 0.388f, 0.9f, 0.686f, 1.0f };
+        GLfloat Uranus_mat_specular[] = { 0.088f, 0.2f, 0.186f, 1.0f };
+        GLfloat Uranus_mat_emission[] = { 0.1f, 0.2f, 0.15f, 1.0f };
+        GLfloat Uranus_mat_shininess = 5.0f;
+
+        creat_planet.drawPlanet(0.35f, 10.9f, angle7, Uranus_mat_ambient, Uranus_mat_diffuse, Uranus_mat_specular, Uranus_mat_emission, Uranus_mat_shininess);
+
+        //// ç»˜åˆ¶å¤©ç‹æ˜Ÿè½¨é“
+        if (Uranus.isSelected) {
+            glColor3f(0.488f, 0.95f, 0.786f);
+        }
+        else {
+            glColor3f(0.0f, 0.0f, 1.0f); // æœªé€‰ä¸­æ—¶è½¨é“é¢œè‰²ä¸ºè“è‰²
+        }
+        drawOrbit (Uranus.orbitRadius, 100);
+
+        //ç»˜åˆ¶æµ·ç‹æ˜Ÿ
+        GLfloat Neptune_mat_ambient[] = { 0.5f, 0.8f, 0.95f, 1.0f };
+        GLfloat Neptune_mat_diffuse[] = { 0.458f, 0.756f, 0.921f, 1.0f };
+        GLfloat Neptune_mat_specular[] = { 0.1f, 0.15f, 0.2f, 1.0f };
+        GLfloat Neptune_mat_emission[] = { 0.1f, 0.1f, 0.2f, 1.0f };
+        GLfloat Neptune_mat_shininess = 5.0f;
+
+        creat_planet.drawPlanet(0.3f, 11.9f, angle8, Neptune_mat_ambient, Neptune_mat_diffuse, Neptune_mat_specular, Neptune_mat_emission, Neptune_mat_shininess);
+
+        // ç»˜åˆ¶seaç‹æ˜Ÿè½¨é“
+        glPushMatrix();
+        if (Neptune.isSelected) {
+            glColor3f(0.5f, 0.8f, 0.95f);
+        }
+        else {
+            glColor3f(0.0f, 0.0f, 1.0f); // æœªé€‰ä¸­æ—¶è½¨é“é¢œè‰²ä¸ºè“è‰²
+        }
+        drawOrbit(Neptune.orbitRadius, 100);
+        glPopMatrix();
+
     }
-    glPopMatrix(); // »Ö¸´µ½Ã»ÓĞµØÇò±ä»»µÄ×´Ì¬
+    glPopMatrix();
 
-    // ¶¨Òå»ğĞÇµÄ²ÄÖÊ²¢»æÖÆ»ğĞÇ
-    GLfloat mars_mat_ambient[] = { 0.5f, 0.0f, 0.0f, 1.0f };
-    GLfloat mars_mat_diffuse[] = { 0.5f, 0.0f, 0.0f, 1.0f };
-    GLfloat mars_mat_specular[] = { 1.0f, 0.0f, 0.0f, 1.0f };
-    GLfloat mars_mat_emission[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-    GLfloat mars_mat_shininess = 0.0f;
-
-    creat_planet.drawPlanet(0.45f, 10.0f, angle2, mars_mat_ambient, mars_mat_diffuse, mars_mat_specular, mars_mat_emission, mars_mat_shininess);
-
-    //»æÖÆË®ĞÇ
-    GLfloat mercury_mat_ambient[] = { 0.25f, 0.25f, 0.25f, 1.0f };//Ã»ÓĞ¹âÕÕµÄÊ±ºò: Ç³»ÒÉ«
-    GLfloat mercury_mat_diffuse[] = { 0.4f, 0.4f, 0.35f, 1.0f };//Âş·´Éä: Ç³»ÒÉ«
-    GLfloat mercury_mat_specular[] = { 0.0f, 0.1f, 0.1f, 1.0f };//¾µÃæ·´É«½ÏÈõ
-    GLfloat mercury_mat_emission[] = { 0.2f, 0.2f, 0.2f, 0.1f };//±¾Éí²»·¢¹â
-    GLfloat mercury_mat_shininess = 10.0f;//¹âÔó¶ÈµÍ
-    creat_planet.drawPlanet(0.15f, 3.0f, angle2, mercury_mat_ambient, mercury_mat_diffuse, mercury_mat_specular, mercury_mat_emission, mercury_mat_shininess);
-
-    //»æÖÆ½ğĞÇ
-    GLfloat venus_mat_ambient[] = { 0.8f, 0.7f, 0.4f, 1.0f };//ÈáºÍ»ÆÉ«
-    GLfloat venus_mat_diffuse[] = { 0.8f, 0.65f, 0.4f, 1.0f };//·´Éä³ÉÎªÁÁ»ÆÉ«
-    GLfloat venus_mat_specular[] = { 0.3f, 0.2f, 0.1f, 1.0f };
-    GLfloat venus_mat_emission[] = { 0.2f, 0.16f, 0.1f, 1.0f };
-    GLfloat venus_mat_shininess = 10.0f;
-    creat_planet.drawPlanet(0.23f, 5.0f, angle2, venus_mat_ambient, venus_mat_diffuse, venus_mat_specular, venus_mat_emission, venus_mat_shininess);
-
-    //»æÖÆÄ¾ĞÇ
-    GLfloat Jupiter_mat_ambient[] = { 0.6f, 0.4f, 0.2f, 1.0f };
-    GLfloat Jupiter_mat_diffuse[] = { 0.8f, 0.6f, 0.3f, 1.0f };
-    GLfloat Jupiter_mat_specular[] = { 0.2f, 0.15f, 0.1f, 1.0f };
-    GLfloat Jupiter_mat_emission[] = { 0.16f, 0.12f, 0.06f, 1.0f };
-    GLfloat Jupiter_mat_shininess = 10.0f;
-    creat_planet.drawPlanet(0.55f, 7.0f, angle2, Jupiter_mat_ambient, Jupiter_mat_diffuse, Jupiter_mat_specular, Jupiter_mat_emission, Jupiter_mat_shininess);
-    
-    //Ä¾ĞÇµÄ»·
-    glRotatef(angle2, 0.0f, 1.0f, 0.0f);
-    glTranslatef(7.0, 0.0f, 0.0f);
-    cycle.draw_cycle((float)0.65, (float)0.95, 100);//È¦ÄÚ, È¦Íâ
-
-    // »æÖÆÒøºÓÏµĞÇµã
+    // ç»˜åˆ¶é“¶æ²³ç³»æ˜Ÿç‚¹
     glPushMatrix();
     milkyWay.init();
     milkyWay.draw();
     glPopMatrix();
 
-    //»æÖÆĞÇÔÆ
+    // ç»˜åˆ¶æ˜Ÿäº‘
     glPushMatrix();
     nebula.initnebula();
     nebula.drawnebula();
     glPopMatrix();
 
+    // ç»˜åˆ¶æ˜Ÿæ˜Ÿ
+    glColor3f(1.0f, 1.0f, 1.0f);
+    glPointSize(1.0f);
+    glBegin(GL_POINTS);
+    for (int i = 0; i < STAR_COUNT; ++i) {
+
+        float size = 2.0f - (starZ[i] + 20.0f) / 40.0f;
+        if (size < 0.5f) size = 0.2f; // ç¡®ä¿æœ€å°å¤§å°
+
+        float alpha = 1.0f - (starZ[i] + 20.0f) / 40.0f;
+        if (alpha < 0.2f) alpha = 0.2f;
+
+        glColor4f(1.0f, 1.0f, 1.0f, alpha);
+        glPointSize(size);
+        glBegin(GL_POINTS);
+        glVertex3f(starX[i], starY[i], starZ[i]);
+        glEnd();
+    }
+    glEnd();
+
+    // ç»˜åˆ¶å°è¡Œæ˜Ÿå¸¦
+    glColor3f(0.6f, 0.6f, 0.6f); // è®¾ç½®å°è¡Œæ˜Ÿçš„é¢œè‰²ä¸ºç°è‰²
+    for (int i = 0; i < ASTEROID_COUNT; ++i) {
+        glPushMatrix();
+        glTranslatef(asteroidX[i], asteroidY[i], asteroidZ[i]);
+        glRotatef(asteroidAngle[i], 0.0f, 1.0f, 0.0f); // ç»• Y è½´æ—‹è½¬
+        glutSolidSphere(asteroidSize[i], 10, 10); // ç»˜åˆ¶å°è¡Œæ˜Ÿ
+        glPopMatrix();
+    }
     glutSwapBuffers();
 }
 
-void myIdle(void)
-{
-    angle1 += 0.03f;
-    angle2 += 0.02f;
-    angle3 += 0.02f;
-    if (angle1 >= 360.0f)
-        angle1 = 0.0f;
-    if (angle2 >= 360.0f)
-        angle2 = 0.0f;
-    if (angle3 >= 360.0f)
-        angle3 = 0.0f;
-    glutPostRedisplay(); // ·¢ËÍÖØ»æÇëÇó
+void myIdle(void) {
+    angle1 += 0.02f;
+    angle2 += 0.0146f;
+    angle3 += 0.0124f;
+    angle4 += 0.01f;
+    angle5 += 0.0054f;
+    angle6 += 0.004f;
+    angle7 += 0.0028f;
+    angle8 += 0.0022f;
+
+    if (angle1 >= 360.0f) angle1 = 0.0f;
+    if (angle2 >= 360.0f) angle2 = 0.0f;
+    if (angle3 >= 360.0f) angle3 = 0.0f;
+    // æ›´æ–°æ˜Ÿæ˜Ÿçš„ä½ç½®ï¼Œè®©å®ƒä»¬å‘é¼ æ ‡ä½ç½®èšé›†
+    for (int i = 0; i < STAR_COUNT; ++i) {
+        float dx = mouseX - starX[i];
+        float dy = mouseY - starY[i];
+        float dz = 0.0f - starZ[i];
+        float speedFactor = 0.00001f + (starZ[i] + 20.0f) / 40.0f * 0.001f;
+
+        starX[i] += dx * speedFactor;
+        starY[i] += dy * speedFactor;
+        starZ[i] += dz * speedFactor;
+    }
+
+    // æ›´æ–°å°è¡Œæ˜Ÿå¸¦çš„æ—‹è½¬è§’åº¦
+    for (int i = 0; i < ASTEROID_COUNT; ++i) {
+        asteroidAngle[i] += 0.05f; // è°ƒæ•´æ—‹è½¬é€Ÿåº¦
+        if (asteroidAngle[i] >= 360.0f) asteroidAngle[i] = 0.0f;
+    }
+
+    // æ›´æ–°å¤ªé˜³çº¹ç†ç´¢å¼•
+    //currentSunTextureIndex = (currentSunTextureIndex + 1) % sun_texture_count;
+    // æ›´æ–°æ··åˆå› å­
+    blendFactor += blendStep;
+    if (blendFactor >= 1.0f) {
+        blendFactor = 0.0f;
+        currentSunTextureIndex = nextSunTextureIndex;
+        nextSunTextureIndex = (nextSunTextureIndex + 1) % sun_texture_count;
+    }
+
+    glutPostRedisplay(); // å‘é€é‡ç»˜è¯·æ±‚
 }
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
+
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
-
     glutInitWindowPosition(400, 200);
     glutInitWindowSize(WIDTH, HEIGHT);
-    glutCreateWindow("OpenGL¹âÕÕÑİÊ¾");
+    glutCreateWindow("OpenGLå…‰ç…§æ¼”ç¤º");
+
+    glewInit();
     init();
+    initTextures();
+
+    // åˆå§‹åŒ–æ˜Ÿæ˜Ÿçš„ä½ç½®
+    for (int i = 0; i < STAR_COUNT; ++i) {
+        // éšæœºç”Ÿæˆæ˜Ÿæ˜Ÿçš„ä½ç½®ï¼ŒèŒƒå›´å¯ä»¥æ ¹æ®éœ€è¦è°ƒæ•´
+        starX[i] = (float)(rand() % 200 - 100) / 100.0f * 10.0f;
+        starY[i] = (float)(rand() % 200 - 100) / 100.0f * 10.0f;
+        starZ[i] = (float)(rand() % 200 - 100) / 100.0f * 10.0f;
+    }
+
+    // åˆå§‹åŒ–å°è¡Œæ˜Ÿå¸¦
+    for (int i = 0; i < ASTEROID_COUNT; ++i) {
+        // éšæœºç”Ÿæˆå°è¡Œæ˜Ÿçš„è§’åº¦
+        float angle = (float)(rand() % 360) * M_PI / 180.0f;
+        // éšæœºç”Ÿæˆå°è¡Œæ˜Ÿåˆ°ä¸­å¿ƒçš„è·ç¦»ï¼Œæ¨¡æ‹Ÿç¯å½¢åˆ†å¸ƒ
+        float distance = (float)(rand() % 100) / 100.0f * 1.0f + 6.7f; // è·ç¦»èŒƒå›´åœ¨ 6.6åˆ° 7.9 ä¹‹é—´,ç«æ˜Ÿä¸æœ¨æ˜Ÿ
+        asteroidX[i] = cos(angle) * distance;
+        asteroidY[i] = 0.0f; // å‡è®¾å°è¡Œæ˜Ÿå¸¦åœ¨ XY å¹³é¢ä¸Š
+        asteroidZ[i] = sin(angle) * distance;
+
+        // éšæœºç”Ÿæˆå°è¡Œæ˜Ÿçš„å¤§å°
+        asteroidSize[i] = (float)(rand() % 10) / 1000.0f * 5.0f + 0.001f; // å¤§å°èŒƒå›´åœ¨ 0.001 åˆ° 0.006 ä¹‹é—´
+
+        // åˆå§‹åŒ–æ—‹è½¬è§’åº¦
+        asteroidAngle[i] = 0.0f;
+    }
 
     glutDisplayFunc(&myDisplay);
     glutIdleFunc(&myIdle);
+
+    //æ˜Ÿæ˜Ÿåœ¨é¼ æ ‡é™„è¿‘èšé›†
+    glutPassiveMotionFunc(mouseMotion);
+
+    //è§†è§’è·Ÿéšé”®ç›˜
+    glutKeyboardFunc(keyboard);
+
+    //è·Ÿéšé¼ æ ‡ç§»åŠ¨æŸ¥çœ‹è½¨é“
+    glutMouseFunc(mouse);
 
     glutMainLoop();
     return 0;
