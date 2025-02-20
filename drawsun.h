@@ -1,33 +1,21 @@
-#pragma once
+#ifndef DRAWSUN_H
+#define DRAWSUN_H
 #define M_PI 3.141592
-
+#include<iostream>
+#include"vec3.h"
 float rayAnimationTime = 0.0f;
 const float ANIMATION_SPEED = 0.01f;
 
-struct vec3{
-    float x, y, z;
 
-// 构造函数
-vec3(float _x = 0.0f, float _y = 0.0f, float _z = 0.0f) : x(_x), y(_y), z(_z) {}
-};
-
-// 自定义 mix 函数
-vec3 mix(const vec3& a, const vec3& b, float factor) {
-    return vec3(
-        a.x + (b.x - a.x) * factor,
-        a.y + (b.y - a.y) * factor,
-        a.z + (b.z - a.z) * factor
-    );
-}
-
+//绘制光晕
 void drawSunHalo() {
-    const int numCircles = 50;
+    const int numCircles = 3;
     const float radii[] = { 1.1, 1.2, 1.3 }; // 光晕半径
     const float alphas[] = { 0.5, 0.3, 0.1 }; // 透明度
     const float colors[][3] = {
-        {1.0, 1.0, 0.5}, // 颜色
-        {1.0, 1.0, 0.5},
-        {1.0, 1.0, 0.5}
+        {1.0, 0.6, 0.5}, // 颜色
+        {1.0, 0.7, 0.5},
+        {1.0, 0.8, 0.5}
     };
 
     glEnable(GL_BLEND);
@@ -48,10 +36,8 @@ void drawSunHalo() {
     glDisable(GL_BLEND);
 }
 
-
-
 void drawSunRays() {
-    const int RAY_COUNT = 800;//光线数量
+    const int RAY_COUNT = 1000;//光线数量
     const int SUB_RAY_COUNT = 30;//光线簇数量
     const float MIN_LENGTH = 1.0f;
     const float MAX_LENGTH = 2.3f;
@@ -82,7 +68,7 @@ void drawSunRays() {
 
         // 从中心到边缘透明度渐变
         glBegin(GL_LINE_STRIP);
-        glColor4f(1.0f, 1.0f, 0.0f, 1.0f); // 中心不透明
+        glColor4f(1.0f, 1.0f, 0.0f, 0.8f); // 中心不透明
         glVertex3f(0.0f, 0.0f, 0.0f);
         glColor4f(1.0f, 1.0f, 0.5f, 0.1f); // 边缘半透明
         glVertex3f((x + offsetX) * length, (y + offsetY) * length, (z + offsetZ) * length);
@@ -110,6 +96,7 @@ void drawSunRays() {
     glDisable(GL_BLEND);
 }
 
+
 void drawsun()
 {
     // 设置透视投影
@@ -117,6 +104,10 @@ void drawsun()
     glLoadIdentity();
     gluPerspective(45.0, 1.33, 1.0, 100.0);  // 设置透视投影
     glMatrixMode(GL_MODELVIEW);
+
+    //设置多个不同颜色的物体
+    glEnable(GL_COLOR_MATERIAL);
+    glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
 
     // 定义太阳的材质并绘制太阳
     GLfloat sun_mat_ambient[] = { 0.6f, 0.5f, 0.0f, 1.0f }; // 环境光，偏黄的暖色调
@@ -133,8 +124,8 @@ void drawsun()
 
     // 在绘制太阳球体时应用颜色渐变
     glPushMatrix();
-    const int numSlices = 40;
-    const int numStacks = 32;
+    const int numSlices = 80;//都是值越大越光滑,遍历球体的经线方向
+    const int numStacks = 32;//遍历球体的纬线方向
     for (int i = 0; i < numStacks; ++i) {
         float phi1 = (float)i / (float)numStacks * M_PI;
         float phi2 = (float)(i + 1) / (float)numStacks * M_PI;
@@ -155,8 +146,8 @@ void drawsun()
 
             // 根据顶点位置计算颜色渐变
             float distanceFromCenter = sqrt(vertex1.x * vertex1.x + vertex1.y * vertex1.y + vertex1.z * vertex1.z);
-            float colorFactor = distanceFromCenter / 1.0f; // 假设球体半径为1
-            vec3 color = mix(vec3(1.0f, 1.0f, 0.0f), vec3(0.5f, 0.5f, 0.0f), colorFactor); // 从中心的黄色到边缘的暗黄色渐变
+            float colorFactor = distanceFromCenter / 1.0f; // 球体半径为1 // 只会在-1.0和1.0之间处理,计算比例
+            vec3 color = mix(vec3(1.0f, 0.8f, 0.0f), vec3(0.5f, 0.4f, 0.0f), colorFactor); // 从中心的黄色到边缘的暗黄色渐变
 
             glColor3f(color.x, color.y, color.z);
             glVertex3f(vertex1.x, vertex1.y, vertex1.z);
@@ -166,31 +157,12 @@ void drawsun()
     }
     glPopMatrix();
 
-    //设置光照
-    glEnable(GL_LIGHTING);
-    glEnable(GL_LIGHT0);
-
-
-    GLfloat lightPosition[] = { 0.0f, 10.0f, 10.0f, 1.0f };  // 光源位置
-    GLfloat lightAmbient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
-    GLfloat lightDiffuse[] = { 1.0f, 1.0f, 1.0f, 1.0f };
-    GLfloat lightSpecluar[] = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-    glLightfv(GL_LIGHT0, GL_POSITION, lightPosition);
-    glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmbient);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse);
-
-    glEnable(GL_COLOR_MATERIAL);
-    glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
 
     // 绘制太阳球体
     glPushMatrix();
     glutSolidSphere(1.0f, 40, 32);
     glPopMatrix();
-
-    
-    glEnable(GL_LIGHTING); // 启用光照
-    glEnable(GL_LIGHT0); //阴影
-    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_DEPTH_TEST); // 启用深度测试
 
 }
+#endif
