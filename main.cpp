@@ -2,6 +2,7 @@
 #include <GL/glut.h>  
 #include <GLFW/glfw3.h>  
 #include<iostream>
+#include<string>
 #include<SOIL.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -10,18 +11,30 @@
 #include"drawsun.h"
 #include"creat_planet.h"
 #include"drawcycle.h"
-#include"milk_way.h"//星河
 #include"creat_nebula.h"//星云
+#include"camera.h"//视角变动
 
 #define WIDTH 1000
 #define HEIGHT 1000
 #define M_PI 3.141592
+
+ //调用头文件
+Planet creat_planet;
+Cycle cycle;
+Nebula nebula;
+Camera camera;
 
 unsigned int texture;
 const int sun_texture_count = 5;
 unsigned int sunTextures[sun_texture_count];
 int currentSunTextureIndex = 0;
 int nextSunTextureIndex = 1;
+float gatherFactor = 0.0f;//星星聚集
+
+// 记录鼠标点击位置
+int clickX = 0;
+int clickY = 0;
+bool isClicked = false;
 
 // 定义天体结构体
 struct CelestialBody {
@@ -30,7 +43,14 @@ struct CelestialBody {
     float orbitCenterX; // 轨道中心 X 坐标
     float orbitCenterY; // 轨道中心 Y 坐标
     float orbitCenterZ; // 轨道中心 Z 坐标
+
     bool isSelected;    // 是否被选中
+    std::string name;   // 星球名称
+    std::string color;     // 星球颜色
+   
+
+    std::string description; // 星球描述信息
+    float diameter;          // 星球直径
 };
 
 // 射线结构体
@@ -39,19 +59,53 @@ struct Ray {
     float directionX, directionY, directionZ;
 };
 
+struct Star {
+    float x, y, z; // 星星的位置
+    bool isGathered; // 是否处于聚集状态
+    float targetX, targetY, targetZ; // 聚集目标位置
+};
+const int STAR_COUNT = 100;  // 星星的数量
+Star stars[STAR_COUNT]; // 星星数组
+
 // 初始化天体
-CelestialBody earth = { 0.32f, 5.4f, 0.0f, 0.0f, 0.0f, false };
-CelestialBody moon = { 0.06f, 0.55f, 0.0f, 0.0f, 0.0f, false };
-CelestialBody mercury = { 0.15f, 2.8f, 0.0f, 0.0f, 0.0f, false };
-CelestialBody venus = { 0.19f, 4.0f, 0.0f, 0.0f, 0.0f, false };
-CelestialBody Saturn = { 0.47f, 9.5f, 0.0f, 0.0f, 0.0f, false };
-CelestialBody mars = { 0.3f, 6.6f, 0.0f, 0.0f, 0.0f, false };
-CelestialBody Jupiter = { 0.5f, 7.9f, 0.0f, 0.0f, 0.0f, false };
-CelestialBody Neptune = { 0.3f, 11.9f, 0.0f, 0.0f, 0.0f, false };
-CelestialBody Uranus = { 0.35f, 10.9f, 0.0f, 0.0f, 0.0f, false };
+
+// 地球
+CelestialBody earth = { 0.32f, 5.4f, 0.0f, 0.0f, 0.0f, false, "Earth\n",
+                        "blue\n","our home planet, full of life.\n", 12742.0f };
+
+// 月球
+CelestialBody moon = { 0.1f, 0.55f, earth.orbitCenterX, earth.orbitCenterY, earth.orbitCenterZ, false, "Moon\n",
+                       "yellow\n",  "Earth's natural satellite.\n", 3474.8f };
+
+// 水星
+CelestialBody mercury = { 0.15f, 2.0f, 0.0f, 0.0f, 0.0f, false, "Mercury\n",
+                       " blue\n ","The closest planet to the Sun.\n", 4880.0f };
+
+// 金星
+CelestialBody venus = { 0.3f, 3.5f, 0.0f, 0.0f, 0.0f, false, "Venus\n",
+                       "orange\n","The second planet from the Sun, known for its thick atmosphere.\n", 12103.6f };
+
+// 土星
+CelestialBody Saturn = { 0.6f, 9.0f, 0.0f, 0.0f, 0.0f, false, "Saturn\n",
+                         "brown\n", "A gas giant with a prominent ring system.\n", 116464.0f };
+
+// 火星
+CelestialBody mars = { 0.2f, 4.0f, 0.0f, 0.0f, 0.0f, false, "Mars\n",
+                       "red\n","The fourth planet from the Sun, often called the 'Red Planet'.\n", 6779.0f };
+
+// 木星
+CelestialBody Jupiter = { 0.7f, 7.0f, 0.0f, 0.0f, 0.0f, false, "Jupiter\n",
+                        "oatmeal\n","The largest planet in our solar system.\n", 139822.0f };
+
+// 海王星
+CelestialBody Neptune = { 0.5f, 11.0f, 0.0f, 0.0f, 0.0f, false, "Neptune\n",
+                         "blue\n","The eighth and farthest known planet from the Sun.\n", 49244.0f };
+
+// 天王星
+CelestialBody Uranus = { 0.45f, 10.0f, 0.0f, 0.0f, 0.0f, false, "Uranus\n",
+                         "blue-black\n","The seventh planet from the Sun, known for its unique axial tilt.\n", 50724.0f };
 
 // 全局变量
-const int STAR_COUNT = 100;  // 星星的数量
 float starX[STAR_COUNT];     // 星星的 x 坐标
 float starY[STAR_COUNT];     // 星星的 y 坐标
 float starZ[STAR_COUNT];     // 星星的 z 坐标
@@ -64,23 +118,9 @@ static GLfloat angle1 = 0.0f, angle4, angle5, angle6, angle7, angle8; // 地球�
 static GLfloat angle2 = 0.0f; // 火星公转角度
 static GLfloat angle3 = 0.0f; // 月球绕地球公转角度
 
-// 相机视角参数
-float cameraX = 0.0f;
-float cameraY = 12.0f;
-float cameraZ = -20.0f;
-float centerX = 0.0f;
-float centerY = 0.0f;
-float centerZ = 0.0f;
-float upX = 0.0f;
-float upY = 10.5f;
-float upZ = 0.0f;
-
-// 鼠标上一位置
-int lastMouseX = 0;
-int lastMouseY = 0;
 
 // 鼠标灵敏度
-const float mouseSensitivity = 0.003f;
+const float mouseSensitivity = 0.3f;
 
 // 小行星带
 const int ASTEROID_COUNT = 200;
@@ -90,10 +130,10 @@ float asteroidZ[ASTEROID_COUNT];
 float asteroidSize[ASTEROID_COUNT];
 float asteroidAngle[ASTEROID_COUNT];
 
-Planet creat_planet;
-Cycle cycle;
-MilkWay milkyWay;
-Nebula nebula;
+//当前显示信息的星球和计时器
+CelestialBody* currentDisplayPlanet = NULL;
+int displayTimer = 0;
+
 
 // 计算射线
 Ray calculateRay(int mouseX, int mouseY, int windowWidth, int windowHeight) {
@@ -121,44 +161,122 @@ Ray calculateRay(int mouseX, int mouseY, int windowWidth, int windowHeight) {
     return ray;
 }
 
-// 射线与轨道相交检测
-bool rayIntersectsOrbit(const Ray& ray, const CelestialBody& body) {
-    
-    float a = ray.directionX * ray.directionX + ray.directionZ * ray.directionZ;
-    float b = 2 * (ray.directionX * (ray.originX - body.orbitCenterX) + ray.directionZ * (ray.originZ - body.orbitCenterZ));
-    float c = (ray.originX - body.orbitCenterX) * (ray.originX - body.orbitCenterX) + (ray.originZ - body.orbitCenterZ) * (ray.originZ - body.orbitCenterZ) - body.orbitRadius * body.orbitRadius;
-
-    float discriminant = b * b - 4 * a * c;
+// 射线与球体相交检测
+bool rayIntersectsSphere(const Ray& ray, const CelestialBody& body) {
+    float ox = ray.originX - body.orbitCenterX;
+    float oy = ray.originY - body.orbitCenterY;
+    float oz = ray.originZ - body.orbitCenterZ;
+    float b = 2 * (ox * ray.directionX + oy * ray.directionY + oz * ray.directionZ);
+    float c = ox * ox + oy * oy + oz * oz - body.radius * body.radius;
+    float discriminant = b * b - 4 * c;
     return discriminant >= 0;
 }
 
-void mouse(int button, int state, int x, int y) {
-    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
-        Ray ray = calculateRay(x, y, WIDTH, HEIGHT);
+// 绘制方框和信息
+void drawInfoBox(const CelestialBody& body) {
+    if (!body.isSelected && &body != currentDisplayPlanet && displayTimer < 300) return;
 
-        // 检测地球轨道
-        earth.isSelected = rayIntersectsOrbit(ray, earth);
+    // 保存当前的投影矩阵和模型视图矩阵
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    // 设置正交投影，范围从 (0, 0) 到 (WIDTH, HEIGHT)
+    gluOrtho2D(0, WIDTH, 0, HEIGHT);
 
-        // 检测月球轨道
-        // 先移动到地球位置
-        float earthX = earth.orbitRadius * cos(angle3 * M_PI / 180.0f);
-        float earthZ = earth.orbitRadius * sin(angle3 * M_PI / 180.0f);
-        moon.orbitCenterX = earthX;
-        moon.orbitCenterZ = earthZ;
-        moon.isSelected = rayIntersectsOrbit(ray, moon);
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
 
-        mercury.isSelected = rayIntersectsOrbit(ray, mercury);
-        venus.isSelected = rayIntersectsOrbit(ray, venus);
-        Saturn.isSelected = rayIntersectsOrbit(ray, Saturn);
-        mars.isSelected = rayIntersectsOrbit(ray, mars);
-        Jupiter.isSelected = rayIntersectsOrbit(ray, Jupiter);
-        Neptune.isSelected = rayIntersectsOrbit(ray, Neptune);
-        Uranus.isSelected = rayIntersectsOrbit(ray, Uranus);
-        
-        glutPostRedisplay();
+    // 信息框的位置(左上角)
+    float infoBoxX = WIDTH * 0.3f;
+    float infoBoxY = HEIGHT * 0.8f;
+
+
+    // 设置边框颜色
+    glColor3f(1.0f, 1.0f, 1.0f);
+    glBegin(GL_LINE_LOOP);
+    glVertex2f(infoBoxX, infoBoxY);
+    glVertex2f(infoBoxX + 550, infoBoxY);
+    glVertex2f(infoBoxX + 550, infoBoxY + 100);
+    glVertex2f(infoBoxX, infoBoxY + 100);
+    glEnd();
+
+    // 显示星球信息
+    glColor3f(1.0f, 1.0f, 1.0f);
+    glRasterPos2f(infoBoxX , infoBoxY + 80);
+    for (char c : body.name) {
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
+    }
+
+    glRasterPos2f(infoBoxX , infoBoxY + 50);
+    for (char c : body.color) {
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
+    }
+
+    glRasterPos2f(infoBoxX, infoBoxY + 20);
+    for (char c : body.description) {
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
+    }
+
+    // 恢复之前保存的投影矩阵和模型视图矩阵
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+}
+
+//聚集成蒲公英
+void gatherStars(float centerX, float centerY, float centerZ) {
+    const int layers = 5; // 蒲公英的层数
+    const float radius = 0.5f; // 每层的半径
+    const float angleStep = 2.0f * M_PI / (STAR_COUNT / layers); // 每层的角度步长
+
+    int starIndex = 0;
+    for (int layer = 0; layer < layers; ++layer) {
+        float currentRadius = radius * (layer + 1);
+        for (float angle = 0; angle < 2.0f * M_PI; angle += angleStep) {
+            if (starIndex >= STAR_COUNT) break;
+
+            stars[starIndex].targetX = centerX + currentRadius * cos(angle);
+            stars[starIndex].targetY = centerY + currentRadius * sin(angle);
+            stars[starIndex].targetZ = centerZ;
+
+            starIndex++;
+        }
     }
 }
 
+//控制星星聚散
+void mouse(int button, int state, int x, int y) {
+
+    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
+        // 记录鼠标点击位置
+        clickX = x;
+        clickY = y;
+        isClicked = true;
+
+        // 切换星星的聚集状态
+        for (int i = 0; i < STAR_COUNT; ++i) {
+            stars[i].isGathered = !stars[i].isGathered;
+            if (stars[i].isGathered) {
+                // 设置聚集目标位置
+                stars[i].targetX = (2.0f * x / WIDTH - 1.0f) * 10.0f; // 转换为 OpenGL 坐标
+                stars[i].targetY = 1.0f - 2.0f * y / HEIGHT * 10.0f;
+                stars[i].targetZ = 0.0f; // 假设聚集在 Z=0 平面
+                gatherStars(stars[i].targetX, stars[i].targetY , stars[i].targetX);
+     
+            }
+            else {
+                // 设置分散目标位置（随机位置）
+                stars[i].targetX = (float)(rand() % 200 - 100) / 100.0f * 10.0f;
+                stars[i].targetY = (float)(rand() % 200 - 100) / 100.0f * 10.0f;
+                stars[i].targetZ = (float)(rand() % 200 - 100) / 100.0f * 10.0f;
+            }
+        }
+    }
+}
+
+// 绘制混合太阳
 void drawBlendedSun(float x, float y, float width, float height) {
     glEnable(GL_TEXTURE_2D);
     glEnable(GL_BLEND);
@@ -176,6 +294,7 @@ void drawBlendedSun(float x, float y, float width, float height) {
     glTexCoord2f(0.0f, 1.0f);
     glVertex2f(x, y + height);
     glEnd();
+
     // 绘制下一纹理
     glBindTexture(GL_TEXTURE_2D, sunTextures[nextSunTextureIndex]);
     glColor4f(1.0f, 1.0f, 1.0f, blendFactor);
@@ -215,7 +334,7 @@ void initTextures() {
             glGenerateMipmap(GL_TEXTURE_2D);
         }
         else {
-            // std::cout << "Failed to load texture" << std::endl;
+           
             std::cout << "Failed to load texture: " << filenames[i] << std::endl;
 
             exit(1); // 退出程序
@@ -248,79 +367,133 @@ void drawTexturedSquare(float x, float y, float width, float height, unsigned in
 }
 
 void mouseMotion(int x, int y) {
-    // 更新鼠标上一位置
-    lastMouseX = x;
-    lastMouseY = y;
 
     float aspect = (float)WIDTH / (float)HEIGHT;
     mouseX = (2.0f * x / WIDTH - 1.0f) * aspect;
     mouseY = 1.0f - 2.0f * y / HEIGHT;
 }
 
-//视角变动
+// 键盘回调函数
 void keyboard(unsigned char key, int x, int y) {
-    const float moveSpeed = 0.1f;
+    float moveSpeed = 0.5f; // 移动速度
+
     switch (key) {
-    case 'w':
-        cameraZ += moveSpeed;
+    case 'w': // 向前移动
+        camera.moveForward(moveSpeed);
         break;
-    case 's':
-        cameraZ -= moveSpeed;
+    case 's': // 向后移动
+        camera.moveBackward(moveSpeed);
         break;
-    case 'a':
-        cameraX -= moveSpeed;
+    case 'a': // 向左移动
+        camera.moveLeft(moveSpeed);
         break;
-    case 'd':
-        cameraX += moveSpeed;
+    case 'd': // 向右移动
+        camera.moveRight(moveSpeed);
         break;
-    case 'q':
-        cameraY += moveSpeed;
+    case 'q': // 向上移动
+        camera.moveUp(moveSpeed);
         break;
-    case 'e':
-        cameraY -= moveSpeed;
+    case 'e': // 向下移动
+        camera.moveDown(moveSpeed);
+        break;
+
+    case '1':
+        currentDisplayPlanet = &mercury;
+        displayTimer = 0;
+        break;
+    case '2':
+        currentDisplayPlanet = &venus;
+        displayTimer = 0;
+        break;
+    case '3':
+        currentDisplayPlanet = &earth;
+        displayTimer = 0;
+        break;
+    case '4':
+        currentDisplayPlanet = &mars;
+        displayTimer = 0;
+        break;
+    case '5':
+        currentDisplayPlanet = &Jupiter;
+        displayTimer = 0;
+        break;
+    case '6':
+        currentDisplayPlanet = &Saturn;
+        displayTimer = 0;
+        break;
+    case '7':
+        currentDisplayPlanet = &Uranus;
+        displayTimer = 0;
+        break;
+    case '8':
+        currentDisplayPlanet = &Neptune;
+        displayTimer = 0;
         break;
     }
-    glutPostRedisplay();
+
+    glutPostRedisplay(); // 请求重绘
 }
 
-////
-//void mouse(int button, int state, int x, int y) {
-//    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
-//        // 这里可以添加点击检测逻辑，判断点击的是哪个天体
-//        std::cout << "Mouse clicked at (" << x << ", " << y << ")" << std::endl;
-//    }
-//}
-
 //显示行星轨道
+// radius: 轨道的半径
+//segments: 轨道的分段数，分段数越多，轨道越平滑
 void drawOrbit(float radius, int segments) {
     glBegin(GL_LINE_LOOP);
     for (int i = 0; i < segments; ++i) {
+        // 计算当前分段的角度
         float angle = 2.0f * M_PI * (float)i / (float)segments;
+        // 计算当前分段的 z 坐标
         float x = radius * std::cos(angle);
+        // 计算当前分段的 z 坐标
         float z = radius * std::sin(angle);
+        // 指定当前顶点的坐标
         glVertex3f(x, 0.0f, z);
     }
     glEnd();
 }
+
+// 绘制文本函数
+void drawText(std::string text, int x, int y) {
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    gluOrtho2D(0, glutGet(GLUT_WINDOW_WIDTH), 0, glutGet(GLUT_WINDOW_HEIGHT));
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glColor3f(1.0f, 1.0f, 1.0f); // 设置文本颜色为白色
+    glRasterPos2i(x, y);
+    for (char c : text) {
+       
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, c);
+    }
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+}
+
 void myDisplay(void)
 {
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+    //glEnable(GL_DEPTH_TEST); // 启用深度测试
     // 创建透视效果视图
     glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluPerspective(120.0f, 1.0f, 1.0f, 20.0f); // 将所有数据数以 1e6
+    glLoadIdentity(); // 重置模型视图矩阵
+    gluPerspective(120.0f, (GLfloat)WIDTH / (GLfloat)HEIGHT, 1.0f, 20.0f); // 将所有数据数以 1e6
     // 1可视角大小;    2定义物体显示在画板上的x和y方向上的比例 ,设为1，会按实际反应长宽比
     //3这个值越大，表示观测点距离物体距离越远
     //4定义可观测到的物体的最远处截面相距相机的距离
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
-    gluLookAt(cameraX, cameraY, cameraZ, centerX, centerY, centerZ, upX, upY, upZ);//前三个 表示相机在世界坐标系中的位置
-    //中间三个定义相机正对着的世界坐标系中的点的位置坐标，成像后这一点会位于画板的中心位置
-    //最后三个数定义相机
-    // 本身的朝向。这三个坐标是在世界坐标系中的坐标点，可以理解为人站立在相机处头的朝向。这三个坐标是世界坐标系中的坐标点，不是相机坐标系的，只是用来定义方向，
+    // 设置相机
+    camera.update();
 
+    glPushMatrix();
     //绘制太阳
     drawsun();
 
@@ -329,6 +502,8 @@ void myDisplay(void)
 
     //光晕
     drawSunHalo();
+    glPopMatrix();
+
     // 绘制太阳(贴图方式)
     //glPushMatrix();
     //glEnable(GL_TEXTURE_2D);
@@ -346,29 +521,28 @@ void myDisplay(void)
     //glPopMatrix();
 
     // 定义地球的材质并绘制地球
-    GLfloat earth_mat_ambient[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-    GLfloat earth_mat_diffuse[] = { 0.0f, 0.0f, 0.5f, 1.0f };
+    GLfloat earth_mat_ambient[] = { 0.2f, 0.2f, 0.8f, 1.0f };
+    GLfloat earth_mat_diffuse[] = { 0.2f, 0.2f, 0.5f, 1.0f };
     GLfloat earth_mat_specular[] = { 0.0f, 0.0f, 1.0f, 1.0f };
     GLfloat earth_mat_emission[] = { 0.0f, 0.0f, 1.0f, 1.0f };
-    GLfloat earth_mat_shininess = 30.0f;
+    GLfloat earth_mat_shininess = 10.0f;
 
     glPushMatrix(); // 开始保存地球的变换状态
     {
+        glPushMatrix();
         creat_planet.drawPlanet(0.32f, 5.4f, angle3, earth_mat_ambient, earth_mat_diffuse, earth_mat_specular, earth_mat_emission, earth_mat_shininess);
+        glPopMatrix();
 
         // 绘制地球轨道
         glPushMatrix();
-        if (earth.isSelected) {
-            glColor3f(0.0f, 0.1f, 0.9f);
-        }
-        else {
-            glColor3f(0.0f, 0.0f, 1.0f); // 未选中时轨道颜色为蓝色
-        }
+        glColor3f(0.0f, 0.1f, 0.9f);
         drawOrbit(earth.orbitRadius, 100);
+
         glPopMatrix();
 
+
         // 定义月球的材质并绘制月球
-        GLfloat moon_mat_ambient[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        GLfloat moon_mat_ambient[] = { 0.5f, 0.5f, 0.0f, 1.0f };
         GLfloat moon_mat_diffuse[] = { 0.72f, 0.73f, 0.47f, 1.0f };
         GLfloat moon_mat_specular[] = { 0.0f, 0.0f, 0.0f, 1.0f };
         GLfloat moon_mat_emission[] = { 0.72f, 0.73f, 0.47f, 1.0f };
@@ -390,6 +564,17 @@ void myDisplay(void)
         }
         glPopMatrix(); // 恢复地球的变换矩阵
 
+        // 绘制月球轨道
+        glPushMatrix();
+
+        glColor3f(0.72f, 0.73f, 0.47f);
+
+        float moonOrbitCenterX = earth.orbitRadius * cos(angle3 * M_PI / 180.0f);
+        float moonOrbitCenterZ = earth.orbitRadius * sin(angle3 * M_PI / 180.0f);
+        glTranslatef(moonOrbitCenterX, 0.0f, -moonOrbitCenterZ);
+        drawOrbit(moon.orbitRadius, 100);
+        glPopMatrix();
+
         // 定义火星的材质并绘制火星
         GLfloat mars_mat_ambient[] = { 0.3f, 0.1f, 0.0f, 1.0f };
         GLfloat mars_mat_diffuse[] = { 0.8f, 0.4f, 0.2f, 1.0f };
@@ -401,12 +586,8 @@ void myDisplay(void)
 
         // 绘制火星轨道
         glPushMatrix();
-        if (mars.isSelected) {
-            glColor3f(0.3f, 0.1f, 0.0f);
-        }
-        else {
-            glColor3f(0.0f, 0.0f, 1.0f); // 未选中时轨道颜色为蓝色
-        }
+
+        glColor3f(0.3f, 0.1f, 0.0f);
         drawOrbit(mars.orbitRadius, 100);
         glPopMatrix();
 
@@ -421,14 +602,12 @@ void myDisplay(void)
 
         // 绘制水星轨道
         glPushMatrix();
-        if (mercury.isSelected) {
-            glColor3f(0.25f, 0.25f, 0.25f);
-        }
-        else {
-            glColor3f(0.0f, 0.0f, 1.0f); // 未选中时轨道颜色为蓝色
-        }
+        glColor3f(0.25f, 0.25f, 0.25f);
+        
+        glColor3f(0.0f, 0.0f, 1.0f); // 未选中时轨道颜色为蓝色
         drawOrbit(mercury.orbitRadius, 100);
         glPopMatrix();
+        //drawInfoBox(mercury);
 
         //绘制金星
         GLfloat venus_mat_ambient[] = { 0.8f, 0.7f, 0.4f, 1.0f };//柔和黄色
@@ -441,14 +620,10 @@ void myDisplay(void)
 
         // 绘制金星轨道
         glPushMatrix();
-        if (venus.isSelected) {
-            glColor3f( 0.8f, 0.7f, 0.4f);
-        }
-        else {
-            glColor3f(0.0f, 0.0f, 1.0f); // 未选中时轨道颜色为蓝色
-        }
+        glColor3f( 0.8f, 0.7f, 0.4f);
         drawOrbit(venus.orbitRadius, 100);
         glPopMatrix();
+        //drawInfoBox(venus);
 
         // 绘制土星
         GLfloat Saturn_mat_ambient[] = { 0.5f, 0.5f, 0.0f, 1.0f };
@@ -461,14 +636,10 @@ void myDisplay(void)
 
         // 绘制土星轨道
         glPushMatrix();
-        if (Saturn.isSelected) {
-            glColor3f(0.5f, 0.5f, 0.0f);
-        }
-        else {
-            glColor3f(0.0f, 0.0f, 1.0f); // 未选中时轨道颜色为蓝色
-        }
+         glColor3f(0.0f, 0.0f, 1.0f); // 未选中时轨道颜色为蓝色
         drawOrbit(Saturn.orbitRadius, 100);
         glPopMatrix();
+       // drawInfoBox(Saturn);
 
         // 土星的环
         glPushMatrix();
@@ -487,13 +658,9 @@ void myDisplay(void)
         creat_planet.drawPlanet(0.5f, 7.9f, angle5, Jupiter_mat_ambient, Jupiter_mat_diffuse, Jupiter_mat_specular, Jupiter_mat_emission, Jupiter_mat_shininess);
 
         // 绘制木星轨道
-        if (Jupiter.isSelected) {
-            glColor3f(0.6f, 0.6f, 0.0f);
-        }
-        else {
-            glColor3f(0.0f, 0.0f, 1.0f); // 未选中时轨道颜色为蓝色
-        }
+        glColor3f(0.6f, 0.6f, 0.0f);
         drawOrbit(Jupiter.orbitRadius, 100);
+        //drawInfoBox(Jupiter);
 
         // 绘制天王星
         GLfloat Uranus_mat_ambient[] = { 0.488f, 0.95f, 0.786f, 1.0f };
@@ -505,12 +672,7 @@ void myDisplay(void)
         creat_planet.drawPlanet(0.35f, 10.9f, angle7, Uranus_mat_ambient, Uranus_mat_diffuse, Uranus_mat_specular, Uranus_mat_emission, Uranus_mat_shininess);
 
         //// 绘制天王星轨道
-        if (Uranus.isSelected) {
-            glColor3f(0.488f, 0.95f, 0.786f);
-        }
-        else {
-            glColor3f(0.0f, 0.0f, 1.0f); // 未选中时轨道颜色为蓝色
-        }
+         glColor3f(0.488f, 0.95f, 0.786f);
         drawOrbit (Uranus.orbitRadius, 100);
 
         //绘制海王星
@@ -524,22 +686,12 @@ void myDisplay(void)
 
         // 绘制sea王星轨道
         glPushMatrix();
-        if (Neptune.isSelected) {
-            glColor3f(0.5f, 0.8f, 0.95f);
-        }
-        else {
-            glColor3f(0.0f, 0.0f, 1.0f); // 未选中时轨道颜色为蓝色
-        }
-        drawOrbit(Neptune.orbitRadius, 100);
+          glColor3f(0.5f, 0.8f, 0.95f);
+          drawOrbit(Neptune.orbitRadius, 100);
         glPopMatrix();
+        //drawInfoBox(Neptune);
 
     }
-    glPopMatrix();
-
-    // 绘制银河系星点
-    glPushMatrix();
-    milkyWay.init();
-    milkyWay.draw();
     glPopMatrix();
 
     // 绘制星云
@@ -547,26 +699,6 @@ void myDisplay(void)
     nebula.initnebula();
     nebula.drawnebula();
     glPopMatrix();
-
-    // 绘制星星
-    glColor3f(1.0f, 1.0f, 1.0f);
-    glPointSize(1.0f);
-    glBegin(GL_POINTS);
-    for (int i = 0; i < STAR_COUNT; ++i) {
-
-        float size = 2.0f - (starZ[i] + 20.0f) / 40.0f;
-        if (size < 0.5f) size = 0.2f; // 确保最小大小
-
-        float alpha = 1.0f - (starZ[i] + 20.0f) / 40.0f;
-        if (alpha < 0.2f) alpha = 0.2f;
-
-        glColor4f(1.0f, 1.0f, 1.0f, alpha);
-        glPointSize(size);
-        glBegin(GL_POINTS);
-        glVertex3f(starX[i], starY[i], starZ[i]);
-        glEnd();
-    }
-    glEnd();
 
     // 绘制小行星带
     glColor3f(0.6f, 0.6f, 0.6f); // 设置小行星的颜色为灰色
@@ -577,32 +709,71 @@ void myDisplay(void)
         glutSolidSphere(asteroidSize[i], 10, 10); // 绘制小行星
         glPopMatrix();
     }
+
+    // 绘制说明文本
+    std::string instructions1 = "W: front";
+    drawText(instructions1, 10, glutGet(GLUT_WINDOW_HEIGHT) - 20);
+    std::string instructions2 = "S: back";
+    drawText(instructions2, 10, glutGet(GLUT_WINDOW_HEIGHT) - 40);
+
+    std::string instructions3 = "A: left";
+    drawText(instructions3, 10, glutGet(GLUT_WINDOW_HEIGHT) - 60);
+    std::string instructions4 = "D: right";
+    drawText(instructions4, 10, glutGet(GLUT_WINDOW_HEIGHT) - 80);
+
+    std::string instructions5 = "Q : up\n";
+    drawText(instructions5, 10, glutGet(GLUT_WINDOW_HEIGHT) - 100);
+    std::string instructions6 = "E : down";
+    drawText(instructions6, 10, glutGet(GLUT_WINDOW_HEIGHT) - 120);
+
+    // 最后绘制信息框，确保在最上层
+    if(currentDisplayPlanet == NULL)
+    drawInfoBox(earth);
+    drawInfoBox(moon);
+    drawInfoBox(mercury);
+    drawInfoBox(venus);
+    drawInfoBox(Saturn);
+    drawInfoBox(mars);
+    drawInfoBox(Jupiter);
+    drawInfoBox(Neptune);
+    drawInfoBox(Uranus);
+
+
+    // 绘制星星
+    glColor3f(1.0f, 1.0f, 1.0f); // 设置星星颜色为白色
+    glPointSize(2.0f); // 设置星星大小
+    glBegin(GL_POINTS);
+    for (int i = 0; i < STAR_COUNT; ++i) {
+        float size = stars[i].isGathered ? 5.0f : 2.0f; // 聚集时星星变大
+        glPointSize(size);
+        glVertex3f(stars[i].x, stars[i].y, stars[i].z);
+    }
+    glEnd();
+
     glutSwapBuffers();
+
 }
 
 void myIdle(void) {
-    angle1 += 0.02f;
-    angle2 += 0.0146f;
-    angle3 += 0.0124f;
-    angle4 += 0.01f;
-    angle5 += 0.0054f;
-    angle6 += 0.004f;
-    angle7 += 0.0028f;
-    angle8 += 0.0022f;
+    angle1 += 0.04f;
+    angle2 += 0.0292f;
+    angle3 += 0.0248f;
+    angle4 += 0.02f;
+    angle5 += 0.0108f;
+    angle6 += 0.008f;
+    angle7 += 0.0056f;
+    angle8 += 0.0044f;
 
-    if (angle1 >= 360.0f) angle1 = 0.0f;
+    if (angle1 >= 360.0f - 0.000001f) angle1 = 0.0f;
     if (angle2 >= 360.0f) angle2 = 0.0f;
     if (angle3 >= 360.0f) angle3 = 0.0f;
-    // 更新星星的位置，让它们向鼠标位置聚集
-    for (int i = 0; i < STAR_COUNT; ++i) {
-        float dx = mouseX - starX[i];
-        float dy = mouseY - starY[i];
-        float dz = 0.0f - starZ[i];
-        float speedFactor = 0.00001f + (starZ[i] + 20.0f) / 40.0f * 0.001f;
 
-        starX[i] += dx * speedFactor;
-        starY[i] += dy * speedFactor;
-        starZ[i] += dz * speedFactor;
+    // 更新星星的位置
+    for (int i = 0; i < STAR_COUNT; ++i) {
+        float speed = 0.01f; // 移动速度
+        stars[i].x += (stars[i].targetX - stars[i].x) * speed;
+        stars[i].y += (stars[i].targetY - stars[i].y) * speed;
+        stars[i].z += (stars[i].targetZ - stars[i].z) * speed;
     }
 
     // 更新小行星带的旋转角度
@@ -621,28 +792,32 @@ void myIdle(void) {
         nextSunTextureIndex = (nextSunTextureIndex + 1) % sun_texture_count;
     }
 
+    // 更新计时器
+    
+        displayTimer++;
+        if (displayTimer >= 300) { // 假设帧率为 60fps，五秒为 300 帧
+            currentDisplayPlanet = NULL;
+            displayTimer = 0;
+        }
+    
+
     glutPostRedisplay(); // 发送重绘请求
 }
 
 int main(int argc, char* argv[]) {
 
     glutInit(&argc, argv);
+    
     glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
     glutInitWindowPosition(400, 200);
     glutInitWindowSize(WIDTH, HEIGHT);
     glutCreateWindow("OpenGL光照演示");
 
     glewInit();
-    init();
+    
+    init();//创造光源
     initTextures();
 
-    // 初始化星星的位置
-    for (int i = 0; i < STAR_COUNT; ++i) {
-        // 随机生成星星的位置，范围可以根据需要调整
-        starX[i] = (float)(rand() % 200 - 100) / 100.0f * 10.0f;
-        starY[i] = (float)(rand() % 200 - 100) / 100.0f * 10.0f;
-        starZ[i] = (float)(rand() % 200 - 100) / 100.0f * 10.0f;
-    }
 
     // 初始化小行星带
     for (int i = 0; i < ASTEROID_COUNT; ++i) {
@@ -661,18 +836,32 @@ int main(int argc, char* argv[]) {
         asteroidAngle[i] = 0.0f;
     }
 
+    // 初始化星星的位置
+    for (int i = 0; i < STAR_COUNT; ++i) {
+        stars[i].x = (float)(rand() % 200 - 100) / 100.0f * 10.0f;
+        stars[i].y = (float)(rand() % 200 - 100) / 100.0f * 10.0f;
+        stars[i].z = (float)(rand() % 200 - 100) / 100.0f * 10.0f;
+        stars[i].isGathered = false; // 初始状态为分散
+        stars[i].targetX = stars[i].x;
+        stars[i].targetY = stars[i].y;
+        stars[i].targetZ = stars[i].z;
+    }
+
     glutDisplayFunc(&myDisplay);
     glutIdleFunc(&myIdle);
 
     //星星在鼠标附近聚集
     glutPassiveMotionFunc(mouseMotion);
 
-    //视角跟随键盘
-    glutKeyboardFunc(keyboard);
-
     //跟随鼠标移动查看轨道
     glutMouseFunc(mouse);
 
-    glutMainLoop();
+    glutKeyboardFunc(keyboard); // 注册键盘回调函数
+
+    glGetString(GL_VERSION);
+    const char* version = (const char*)glGetString(GL_VERSION);
+    std::cout << "OpenGL Version: " << version << std::endl;
+
+    glutMainLoop(); 
     return 0;
 }
